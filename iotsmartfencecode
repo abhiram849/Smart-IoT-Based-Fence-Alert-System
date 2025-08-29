@@ -1,0 +1,116 @@
+#include <LiquidCrystal.h>
+
+// Pin Definitions
+const int pirPin     = 2;
+const int trigPin    = 3;
+const int echoPin    = 4;
+const int buzzerPin  = 5;
+const int vibrPin    = 6;
+const int relayPin   = 13;
+const int wireSensorPin = A0; // NEW: Wire Sensor Pin
+
+// LCD Pins: RS, E, D4, D5, D6, D7
+LiquidCrystal lcd(7, 8, 9, 10, 11, 12);
+
+bool lastAlertState = false;
+bool lastWireTouchState = false; // NEW: To track wire touch separately
+
+void setup() {
+  pinMode(pirPin, INPUT);
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+  pinMode(buzzerPin, OUTPUT);
+  pinMode(vibrPin, OUTPUT);
+  pinMode(relayPin, OUTPUT);
+  pinMode(wireSensorPin, INPUT); // NEW: Set wire sensor as input
+
+  lcd.begin(16, 2);
+  lcd.setCursor(0, 0);
+  lcd.print("Smart Fencing");
+  lcd.setCursor(0, 1);
+  lcd.print("System Ready");
+  delay(2000);
+  lcd.clear();
+
+  Serial.begin(9600); // optional
+}
+
+void loop() {
+  // Read PIR
+  bool motion = digitalRead(pirPin);
+
+  // Measure distance with ultrasonic
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  long duration = pulseIn(echoPin, HIGH);
+  float distance = duration * 0.034 / 2;
+
+  // Previous Condition to trigger alert
+  bool alert = (motion || (distance > 0 && distance < 20));
+
+  // Read wire sensor separately
+  bool wireTouched = digitalRead(wireSensorPin); // HIGH if wire is touched
+
+  // Show regular alerts first
+  if (alert != lastAlertState) {
+    lcd.clear();
+    if (alert) {
+      lcd.setCursor(0, 0);
+      lcd.print("Fence ALERT!");
+      lcd.setCursor(0, 1);
+      if (motion && distance < 20)
+        lcd.print("Motion & Object");
+      else if (motion)
+        lcd.print("Motion Detected");
+      else
+        lcd.print("Object Close");
+    } else {
+      lcd.setCursor(0, 0);
+      lcd.print("Fence Status:");
+      lcd.setCursor(0, 1);
+      lcd.print("All Clear ✓");
+    }
+    lastAlertState = alert;
+  }
+
+  // NEW: Wire touch alert handling separately
+  if (wireTouched && !lastWireTouchState) {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("FENCE BREACH!");
+    lcd.setCursor(0, 1);
+    lcd.print("Wire Touched!");
+
+    digitalWrite(buzzerPin, HIGH);
+    digitalWrite(vibrPin, HIGH);
+    digitalWrite(relayPin, HIGH);
+    delay(1000);
+    digitalWrite(buzzerPin, LOW);
+    digitalWrite(vibrPin, LOW);
+    digitalWrite(relayPin, LOW);
+
+    lastWireTouchState = true;
+  } else if (!wireTouched && lastWireTouchState) {
+    lastWireTouchState = false;
+  }
+
+  // For normal alert handling
+  if (alert) {
+    digitalWrite(buzzerPin, HIGH);
+    digitalWrite(vibrPin, HIGH);
+    digitalWrite(relayPin, HIGH);
+    delay(1000);
+    digitalWrite(buzzerPin, LOW);
+    digitalWrite(vibrPin, LOW);
+    digitalWrite(relayPin, LOW);
+  } else {
+    digitalWrite(buzzerPin, LOW);
+    digitalWrite(vibrPin, LOW);
+    digitalWrite(relayPin, LOW);
+  }
+
+  delay(500); // small delay for stability
+}
